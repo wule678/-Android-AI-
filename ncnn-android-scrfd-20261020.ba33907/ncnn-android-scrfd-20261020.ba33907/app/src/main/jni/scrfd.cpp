@@ -238,7 +238,7 @@ int SCRFD::load(const char* modeltype, bool use_gpu)
     scrfd.opt.use_vulkan_compute = use_gpu;
 #endif
 
-    scrfd.opt.num_threads = ncnn::get_big_cpu_count();
+    scrfd.opt.num_threads =ncnn::get_big_cpu_count();
 
     char parampath[256];
     char modelpath[256];
