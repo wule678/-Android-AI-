@@ -6,6 +6,6 @@ find_package(OpenCV REQUIRED core imgproc)
 set(ncnn_DIR ${CMAKE_SOURCE_DIR}/ncnn-20261020-android-vulkan/${ANDROID_ABI}/lib/cmake/ncnn)
 find_package(ncnn REQUIRED)
 
-add_library(scrfdncnn SHARED scrfdncnn.cpp scrfd.cpp ndkcamera.cpp)
+add_library(scrfdncnn SHARED scrfdncnn.cpp scrfd.cpp edgeface.cpp minifasnet.cpp facestore.cpp inferencenative.cpp ndkcamera.cpp)
 
 target_link_libraries(scrfdncnn ncnn ${OpenCV_LIBS} camera2ndk mediandk)

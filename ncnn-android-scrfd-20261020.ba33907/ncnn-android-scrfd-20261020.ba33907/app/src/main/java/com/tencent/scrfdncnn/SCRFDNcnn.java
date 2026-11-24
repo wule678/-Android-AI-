@@ -24,6 +24,14 @@ public class SCRFDNcnn
     public native boolean closeCamera();
     public native boolean setOutputWindow(Surface surface);
 
+    // 识别 / 活体模型与本地人脸库接口（课程综合实验新增）
+    public native boolean loadRecogModel(AssetManager mgr, int cpugpu);
+    public native boolean loadLivenessModel(AssetManager mgr, int cpugpu);
+    public native boolean registerFace(String name);
+    public native boolean deleteFace(String name);
+    public native void clearFaces();
+    public native String getRecogResult();
+
     static {
         System.loadLibrary("scrfdncnn");
     }

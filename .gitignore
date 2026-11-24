@@ -1,0 +1,25 @@
+# IDE 配置
+.idea/
+*.iml
+
+# 本地配置（含 SDK 路径）
+local.properties
+
+# 构建产物（匹配任意层级）
+.gradle/
+build/
+.cxx/
+
+# ncnn 工具包 + 模型转换中间产物（任意层级）
+**/tools/ncnn-*/
+**/tools/convert/
+**/tools/models/
+
+# 原始模型
+*.pt
+*.pth
+*.onnx
+*.zip
+
+# 课程要求 PDF（外部文档，非项目源码）
+*.pdf

@@ -39,6 +39,46 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content">
+
+    <Button
+        android:id="@+id/buttonRegister"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="注册人脸" />
+
+    <Button
+        android:id="@+id/buttonDelete"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="删除人脸" />
+
+    <Button
+        android:id="@+id/buttonClear"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="清空" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/textInference"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="推理服务连接中..."
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/textResult"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="识别: 未知"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
     <SurfaceView
         android:id="@+id/cameraview"
         android:layout_width="fill_parent"

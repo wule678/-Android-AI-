@@ -7,6 +7,16 @@ android {
     compileSdk 33
     ndkVersion "30.0.16248370"
 
+    buildFeatures {
+        aidl true
+    }
+
+    sourceSets {
+        main {
+            aidl.srcDirs = ['src/main/aidl']
+        }
+    }
+
     defaultConfig {
         applicationId "com.tencent.scrfdncnn"
         archivesBaseName = "$applicationId"

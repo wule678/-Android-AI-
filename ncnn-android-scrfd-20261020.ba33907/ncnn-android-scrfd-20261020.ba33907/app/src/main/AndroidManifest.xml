@@ -13,5 +13,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".InferenceService"
+            android:process=":inference"
+            android:exported="false" />
     </application>
 </manifest> 
