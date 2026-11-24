@@ -9,8 +9,8 @@ interface IInferenceService {
     // 推理服务进程 PID（用于展示进程角色）
     int getPid();
 
-    // 从 RGB 图 + 5 关键点提取人脸特征（L2 归一化向量）
-    float[] extractFeature(in byte[] rgb, int width, int height, in float[] landmark);
+    // 从已对齐的 RGB 图提取人脸特征（L2 归一化向量，对齐由主进程完成）
+    float[] extractFeature(in byte[] aligned, int width, int height);
 
     // 活体检测，返回真人分数 [0,1]
     float detectLiveness(in byte[] rgb, int width, int height);

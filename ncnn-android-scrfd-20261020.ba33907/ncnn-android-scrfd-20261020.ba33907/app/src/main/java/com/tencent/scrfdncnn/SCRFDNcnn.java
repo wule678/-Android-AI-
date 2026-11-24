@@ -31,6 +31,8 @@ public class SCRFDNcnn
     public native boolean deleteFace(String name);
     public native void clearFaces();
     public native String getRecogResult();
+    public native byte[][] getPendingFaceData();
+    public native void setRecogResult(String name, float liveness);
 
     static {
         System.loadLibrary("scrfdncnn");

@@ -31,11 +31,11 @@ public class InferenceService extends Service
         }
 
         @Override
-        public float[] extractFeature(byte[] rgb, int width, int height, float[] landmark)
+        public float[] extractFeature(byte[] aligned, int width, int height)
         {
             long t0 = System.currentTimeMillis();
             try {
-                return NativeInference.extractFeature(rgb, width, height, landmark);
+                return NativeInference.extractFeature(aligned, width, height);
             } finally {
                 record(t0);
             }

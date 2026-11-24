@@ -14,6 +14,10 @@
 // 前置声明，避免在头文件里引入 android/asset_manager.h
 struct AAssetManager;
 
+// 独立的人脸对齐函数（5 点相似变换，纯几何，不依赖模型）。
+// 输出 out_size x out_size 的 RGB 图（通常 112）。
+int align_face_5pts(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::Mat& aligned, int out_size);
+
 // EdgeFace-XXS 人脸识别模型封装。
 // 输入：对齐后的 112x112 RGB 人脸；输出：L2 归一化的 512 维特征向量。
 class EdgeFace

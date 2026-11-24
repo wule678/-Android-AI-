@@ -82,6 +82,11 @@ int EdgeFace::load(AAssetManager* mgr, const char* modeltype, bool use_gpu)
 
 int EdgeFace::align_face(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::Mat& aligned) const
 {
+    return align_face_5pts(rgb, landmark, aligned, input_size);
+}
+
+int align_face_5pts(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::Mat& aligned, int out_size)
+{
     // 构造源点（检测关键点）与目标点（规范脸关键点）
     std::vector<cv::Point2f> src(5), dst(5);
     for (int i = 0; i < 5; i++)
@@ -91,7 +96,6 @@ int EdgeFace::align_face(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::
     }
 
     // 最小二乘相似变换：x' = a*x - b*y + tx; y' = b*x + a*y + ty
-    // 参考 insightface 的 5 点对齐（skimage.transform.SimilarityTransform 的解析解）。
     float src_mx = 0.f, src_my = 0.f;
     float dst_mx = 0.f, dst_my = 0.f;
     for (int i = 0; i < 5; i++)
@@ -102,8 +106,7 @@ int EdgeFace::align_face(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::
     src_mx /= 5.f; src_my /= 5.f;
     dst_mx /= 5.f; dst_my /= 5.f;
 
-    // 一次遍历同时累积 denom、a、b：
-    //   denom = sum(sx^2 + sy^2)，a = sum(sx*dx + sy*dy)，b = sum(sx*dy - sy*dx)
+    // 一次遍历同时累积 denom、a、b
     float denom = 0.f;
     float a = 0.f, b = 0.f;
     for (int i = 0; i < 5; i++)
@@ -119,7 +122,6 @@ int EdgeFace::align_face(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::
 
     if (denom < 1e-6f)
     {
-        // 关键点退化，退化为恒等（不缩放不旋转）
         a = 1.f;
         b = 0.f;
     }
@@ -136,7 +138,7 @@ int EdgeFace::align_face(const cv::Mat& rgb, const cv::Point2f landmark[5], cv::
     float* m = M.ptr<float>(0);
     m[0] = a;  m[1] = -b; m[2] = tx;
     m[3] = b;  m[4] = a;  m[5] = ty;
-    cv::warpAffine(rgb, aligned, M, cv::Size(input_size, input_size), cv::INTER_LINEAR);
+    cv::warpAffine(rgb, aligned, M, cv::Size(out_size, out_size), cv::INTER_LINEAR);
 
     return 0;
 }

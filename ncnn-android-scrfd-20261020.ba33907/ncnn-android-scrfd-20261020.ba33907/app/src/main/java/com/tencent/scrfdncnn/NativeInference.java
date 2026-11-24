@@ -7,7 +7,7 @@ import android.content.res.AssetManager;
 public class NativeInference
 {
     public static native boolean loadModels(AssetManager mgr, int cpugpu);
-    public static native float[] extractFeature(byte[] rgb, int width, int height, float[] landmark);
+    public static native float[] extractFeature(byte[] aligned, int width, int height);
     public static native float detectLiveness(byte[] rgb, int width, int height);
     public static native boolean registerFace(String name, float[] feature);
     public static native String recognizeFace(float[] feature, float threshold);

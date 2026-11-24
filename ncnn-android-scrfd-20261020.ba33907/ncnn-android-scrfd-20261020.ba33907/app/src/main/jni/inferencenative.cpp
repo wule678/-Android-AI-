@@ -45,21 +45,14 @@ JNIEXPORT jboolean JNICALL Java_com_tencent_scrfdncnn_NativeInference_loadModels
     return (r1 == 0 && r2 == 0) ? JNI_TRUE : JNI_FALSE;
 }
 
-// public static native float[] extractFeature(byte[] rgb, int width, int height, float[] landmark);
-JNIEXPORT jfloatArray JNICALL Java_com_tencent_scrfdncnn_NativeInference_extractFeature(JNIEnv* env, jclass thiz, jbyteArray rgb, jint width, jint height, jfloatArray landmark)
+// public static native float[] extractFeature(byte[] aligned, int width, int height);
+JNIEXPORT jfloatArray JNICALL Java_com_tencent_scrfdncnn_NativeInference_extractFeature(JNIEnv* env, jclass thiz, jbyteArray rgb, jint width, jint height)
 {
-    // rgb byte[] -> cv::Mat
+    // rgb byte[] -> cv::Mat（已对齐的人脸图，主进程已做对齐）
     jbyte* rgbData = env->GetByteArrayElements(rgb, 0);
     cv::Mat img(height, width, CV_8UC3, (unsigned char*)rgbData);
     cv::Mat imgCopy = img.clone();
     env->ReleaseByteArrayElements(rgb, rgbData, JNI_ABORT);
-
-    // landmark -> cv::Point2f[5]
-    jfloat* lm = env->GetFloatArrayElements(landmark, 0);
-    cv::Point2f pts[5];
-    for (int i = 0; i < 5; i++)
-        pts[i] = cv::Point2f(lm[i * 2], lm[i * 2 + 1]);
-    env->ReleaseFloatArrayElements(landmark, lm, JNI_ABORT);
 
     std::vector<float> feature;
     {
@@ -68,10 +61,8 @@ JNIEXPORT jfloatArray JNICALL Java_com_tencent_scrfdncnn_NativeInference_extract
         if (!g_edgeface || !g_edgeface->is_loaded())
             return 0;
 
-        cv::Mat aligned;
-        if (g_edgeface->align_face(imgCopy, pts, aligned) != 0)
-            return 0;
-        if (g_edgeface->extract_feature(aligned, feature) != 0)
+        // 直接对已对齐图提取特征（对齐在主进程完成）
+        if (g_edgeface->extract_feature(imgCopy, feature) != 0)
             return 0;
     }
 

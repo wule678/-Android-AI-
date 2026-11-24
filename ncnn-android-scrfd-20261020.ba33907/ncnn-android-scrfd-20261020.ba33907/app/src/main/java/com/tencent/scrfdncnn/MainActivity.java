@@ -61,14 +61,36 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback
     private boolean inferenceBound = false;
     private TextView textInference;
     private TextView textResult;
+    private float[] lastFeature = null;
     private Handler handler = new Handler();
     private Runnable updateResultRunnable = new Runnable() {
         @Override
         public void run() {
-            if (textResult != null) {
-                textResult.setText(scrfdncnn.getRecogResult());
+            // 完整 IPC 数据流：主进程取预处理图 -> AIDL 发推理进程 -> 结果回传
+            if (inferenceService != null) {
+                try {
+                    byte[][] data = scrfdncnn.getPendingFaceData();
+                    if (data != null && data.length == 2) {
+                        byte[] align = data[0];
+                        byte[] livenessImg = data[1];
+                        float[] feature = inferenceService.extractFeature(align, 112, 112);
+                        float liveness = inferenceService.detectLiveness(livenessImg, 80, 80);
+                        String name = inferenceService.recognizeFace(feature, 0.5f);
+                        lastFeature = feature;
+                        // 回传 C++（供画面标注）
+                        scrfdncnn.setRecogResult(name, liveness);
+                        // 更新 TextView
+                        if (textResult != null) {
+                            boolean isReal = liveness >= 0.5f;
+                            textResult.setText("识别: " + (name.isEmpty() ? "未知" : name)
+                                    + " | 活体: " + (isReal ? "真人" : "攻击")
+                                    + " (" + String.format("%.2f", liveness) + ")");
+                        }
+                    }
+                } catch (Exception e) {
+                }
             }
-            handler.postDelayed(this, 300);
+            handler.postDelayed(this, 200);
         }
     };
 
@@ -184,7 +206,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback
                                     Toast.makeText(MainActivity.this, "姓名不能为空", Toast.LENGTH_SHORT).show();
                                     return;
                                 }
-                                boolean ok = scrfdncnn.registerFace(name);
+                                boolean ok = false;
+                                try {
+                                    if (inferenceService != null && lastFeature != null) {
+                                        ok = inferenceService.registerFace(name, lastFeature);
+                                    }
+                                } catch (Exception e) {
+                                }
                                 Toast.makeText(MainActivity.this, ok ? ("已注册: " + name) : "注册失败（请对准人脸，且姓名不能重复）", Toast.LENGTH_SHORT).show();
                             }
                         })
@@ -210,7 +238,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback
                                     Toast.makeText(MainActivity.this, "姓名不能为空", Toast.LENGTH_SHORT).show();
                                     return;
                                 }
-                                boolean ok = scrfdncnn.deleteFace(name);
+                                boolean ok = false;
+                                try {
+                                    if (inferenceService != null) {
+                                        ok = inferenceService.deleteFace(name);
+                                    }
+                                } catch (Exception e) {
+                                }
                                 Toast.makeText(MainActivity.this, ok ? ("已删除: " + name) : "删除失败（未找到该姓名）", Toast.LENGTH_SHORT).show();
                             }
                         })
@@ -223,7 +257,12 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback
         buttonClear.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                scrfdncnn.clearFaces();
+                try {
+                    if (inferenceService != null) {
+                        inferenceService.clearFaces();
+                    }
+                } catch (Exception e) {
+                }
                 Toast.makeText(MainActivity.this, "已清空人脸库", Toast.LENGTH_SHORT).show();
             }
         });

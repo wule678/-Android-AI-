@@ -222,62 +222,55 @@ static std::atomic<bool> g_consumer_running(false);
 // I/O 事件链各阶段耗时（毫秒）
 static std::atomic<long> g_detect_ms(0);       // 检测耗时
 static std::atomic<long> g_queue_wait_ms(0);   // 队列等待（入队→出队）
-static std::atomic<long> g_recog_ms(0);        // 识别耗时
-static std::atomic<long> g_liveness_ms(0);     // 活体耗时
+static std::atomic<long> g_preprocess_ms(0);   // 预处理耗时（对齐+裁剪）
+
+// 待发送给推理进程(:inference)的数据缓冲区
+static std::mutex g_pending_mutex;
+static std::vector<unsigned char> g_pending_align;      // 112x112x3 RGB
+static std::vector<unsigned char> g_pending_liveness;   // 80x80x3 RGB
+static std::atomic<bool> g_pending_flag(false);
 static std::thread g_consumer_thread;
 
 // 消费者：对一帧做人脸对齐 + 特征提取 + 识别 + 活体
 static void process_task(const FaceTask& task)
 {
-    ncnn::MutexLockGuard g(lock);
+    double t0 = ncnn::get_current_time();
 
-    // 人脸对齐 + 特征提取 + 识别
-    if (g_edgeface && g_edgeface->is_loaded())
+    // 人脸对齐（112x112，纯几何，不推理）
+    cv::Mat aligned;
+    if (align_face_5pts(task.rgb, task.landmark, aligned, 112) != 0)
+        return;
+    if (!aligned.isContinuous())
+        aligned = aligned.clone();
+
+    // 活体裁剪（scale=2.7 → resize 到 80x80）
+    cv::Mat face_crop;
+    const float scale = 2.7f;
+    float cx = task.rect.x + task.rect.width * 0.5f;
+    float cy = task.rect.y + task.rect.height * 0.5f;
+    float w = task.rect.width * scale;
+    float h = task.rect.height * scale;
+    int x0 = (int)(cx - w * 0.5f); if (x0 < 0) x0 = 0;
+    int y0 = (int)(cy - h * 0.5f); if (y0 < 0) y0 = 0;
+    int x1 = (int)(cx + w * 0.5f); if (x1 > task.rgb.cols) x1 = task.rgb.cols;
+    int y1 = (int)(cy + h * 0.5f); if (y1 > task.rgb.rows) y1 = task.rgb.rows;
+    if (x1 > x0 && y1 > y0)
     {
-        double t0 = ncnn::get_current_time();
-        cv::Mat aligned;
-        if (g_edgeface->align_face(task.rgb, task.landmark, aligned) == 0)
-        {
-            std::vector<float> feature;
-            if (g_edgeface->extract_feature(aligned, feature) == 0)
-            {
-                g_last_feature = feature;
-                float score = 0.f;
-                std::string name = g_facestore.recognize(feature, g_recog_threshold, score);
-                g_last_name = name;
-                g_last_similarity = score;
-            }
-        }
-        g_recog_ms = (long)(ncnn::get_current_time() - t0);
+        cv::Mat crop = task.rgb(cv::Rect(x0, y0, x1 - x0, y1 - y0));
+        cv::resize(crop, face_crop, cv::Size(80, 80));
+    }
+    if (face_crop.empty())
+        return;
+
+    // 存缓冲区（供 Java 层通过 AIDL 发送给推理进程 :inference）
+    {
+        std::lock_guard<std::mutex> lk(g_pending_mutex);
+        g_pending_align.assign(aligned.data, aligned.data + 112 * 112 * 3);
+        g_pending_liveness.assign(face_crop.data, face_crop.data + 80 * 80 * 3);
+        g_pending_flag = true;
     }
 
-    // 活体检测 + 连续帧稳定（EMA 平滑）
-    if (g_minifasnet && g_minifasnet->is_loaded())
-    {
-        double t0 = ncnn::get_current_time();
-        const float scale = 2.7f;
-        float cx = task.rect.x + task.rect.width * 0.5f;
-        float cy = task.rect.y + task.rect.height * 0.5f;
-        float w = task.rect.width * scale;
-        float h = task.rect.height * scale;
-        int x0 = (int)(cx - w * 0.5f); if (x0 < 0) x0 = 0;
-        int y0 = (int)(cy - h * 0.5f); if (y0 < 0) y0 = 0;
-        int x1 = (int)(cx + w * 0.5f); if (x1 > task.rgb.cols) x1 = task.rgb.cols;
-        int y1 = (int)(cy + h * 0.5f); if (y1 > task.rgb.rows) y1 = task.rgb.rows;
-        if (x1 > x0 && y1 > y0)
-        {
-            cv::Mat face_crop = task.rgb(cv::Rect(x0, y0, x1 - x0, y1 - y0)).clone();
-            float real_score = 0.f;
-            if (g_minifasnet->detect_liveness(face_crop, real_score) == 0)
-            {
-                if (g_last_liveness == 0.f)
-                    g_last_liveness = real_score;
-                else
-                    g_last_liveness = g_last_liveness * 0.7f + real_score * 0.3f;
-            }
-        }
-        g_liveness_ms = (long)(ncnn::get_current_time() - t0);
-    }
+    g_preprocess_ms = (long)(ncnn::get_current_time() - t0);
 }
 
 // 消费者线程主循环：从队列取任务处理
@@ -341,8 +334,8 @@ static void draw_pipeline_result(cv::Mat& rgb)
     sprintf(text, "queue: %d/%d dropped: %d done: %d", queue_size, g_max_queue, g_dropped_frames.load(), g_processed_frames.load());
     draw_label(rgb, text, y + 44);
 
-    // I/O 事件链各阶段耗时
-    sprintf(text, "det: %ldms wait: %ldms recog: %ldms live: %ldms", g_detect_ms.load(), g_queue_wait_ms.load(), g_recog_ms.load(), g_liveness_ms.load());
+    // I/O 事件链各阶段耗时（识别/活体耗时在推理进程，通过 IPC 统计查看）
+    sprintf(text, "det: %ldms wait: %ldms prep: %ldms", g_detect_ms.load(), g_queue_wait_ms.load(), g_preprocess_ms.load());
     draw_label(rgb, text, y + 66);
 }
 
@@ -636,6 +629,46 @@ JNIEXPORT jstring JNICALL Java_com_tencent_scrfdncnn_SCRFDNcnn_getRecogResult(JN
                  is_real ? "真人" : "攻击", g_last_liveness);
     }
     return env->NewStringUTF(buf);
+}
+
+// public native byte[][] getPendingFaceData();
+// 返回 [对齐图(112x112x3 RGB), 活体裁剪图(80x80x3 RGB)]，无待处理返回 null
+JNIEXPORT jobjectArray JNICALL Java_com_tencent_scrfdncnn_SCRFDNcnn_getPendingFaceData(JNIEnv* env, jobject thiz)
+{
+    std::vector<unsigned char> align, liveness;
+    {
+        std::lock_guard<std::mutex> lk(g_pending_mutex);
+        if (!g_pending_flag)
+            return 0;
+        align = g_pending_align;
+        liveness = g_pending_liveness;
+        g_pending_flag = false;
+    }
+
+    jbyteArray alignArr = env->NewByteArray((jsize)align.size());
+    env->SetByteArrayRegion(alignArr, 0, (jsize)align.size(), (const jbyte*)align.data());
+    jbyteArray liveArr = env->NewByteArray((jsize)liveness.size());
+    env->SetByteArrayRegion(liveArr, 0, (jsize)liveness.size(), (const jbyte*)liveness.data());
+
+    jclass byteArrCls = env->FindClass("[B");
+    jobjectArray result = env->NewObjectArray(2, byteArrCls, 0);
+    env->SetObjectArrayElement(result, 0, alignArr);
+    env->SetObjectArrayElement(result, 1, liveArr);
+    return result;
+}
+
+// public native void setRecogResult(String name, float liveness);
+JNIEXPORT void JNICALL Java_com_tencent_scrfdncnn_SCRFDNcnn_setRecogResult(JNIEnv* env, jobject thiz, jstring name, jfloat liveness)
+{
+    const char* cname = env->GetStringUTFChars(name, 0);
+    std::string sname(cname ? cname : "");
+    env->ReleaseStringUTFChars(name, cname);
+
+    ncnn::MutexLockGuard g(lock);
+    g_last_name = sname;
+    g_last_liveness = (float)liveness;
+    if (sname.empty())
+        g_last_similarity = 0.f;
 }
 
 }
